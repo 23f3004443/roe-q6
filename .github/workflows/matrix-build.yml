@@ -1,0 +1,57 @@
+name: Matrix Build with Artifacts - 0417411
+
+# Allow manual runs and on push to any branch
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [14, 16, 18]       # <-- three matrix variants
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: matrix-0417411
+        id: matrix_step
+        run: |
+          echo "matrix identifier step: matrix-0417411"
+          echo "Running on runner: $RUNNER_OS"
+          echo "Node version: $(node -v)" 
+
+      - name: Generate build artifact file
+        id: gen_artifact
+        run: |
+          # Create a unique artifact file per matrix variant
+          ART_FILE="build-0417411-node${{ matrix.node }}.txt"
+          echo "Build artifact for node ${{ matrix.node }}" > "$ART_FILE"
+          echo "Repository: $GITHUB_REPOSITORY" >> "$ART_FILE"
+          echo "Run id: $GITHUB_RUN_ID" >> "$ART_FILE"
+          echo "Job: $GITHUB_JOB" >> "$ART_FILE"
+          # Add a timestamp and matrix variables so it's non-empty and unique
+          date --utc >> "$ART_FILE" || python - <<'PY'  # fallback for Windows runners
+import datetime, sys
+print(datetime.datetime.utcnow().isoformat())
+PY
+          # Ensure file exists and is non-empty
+          wc -c "$ART_FILE" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # artifact name must start with prefix build-0417411-
+          name: build-0417411-node${{ matrix.node }}
+          path: build-0417411-node${{ matrix.node }}.txt
