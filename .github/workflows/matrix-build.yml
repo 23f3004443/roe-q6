@@ -1,6 +1,5 @@
 name: Matrix Build with Artifacts - 0417411
 
-# Allow manual runs and on push to any branch
 on:
   push:
     branches:
@@ -14,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [14, 16, 18]       # <-- three matrix variants
+        node: [14, 16, 18]
 
     steps:
       - name: Checkout repository
@@ -30,28 +29,58 @@ jobs:
         run: |
           echo "matrix identifier step: matrix-0417411"
           echo "Running on runner: $RUNNER_OS"
-          echo "Node version: $(node -v)" 
+          echo "Node version: $(node -v || true)"
+
+      # Debug: show workspace and environment (helps diagnose missing files / env issues)
+      - name: Debug - show working dir and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "List all files:"
+          ls -la || true
+          echo "Show repository root contents:"
+          ls -la $GITHUB_WORKSPACE || true
 
       - name: Generate build artifact file
         id: gen_artifact
         run: |
-          # Create a unique artifact file per matrix variant
+          set -euo pipefail
           ART_FILE="build-0417411-node${{ matrix.node }}.txt"
+          echo "Creating artifact file: $ART_FILE"
           echo "Build artifact for node ${{ matrix.node }}" > "$ART_FILE"
           echo "Repository: $GITHUB_REPOSITORY" >> "$ART_FILE"
           echo "Run id: $GITHUB_RUN_ID" >> "$ART_FILE"
           echo "Job: $GITHUB_JOB" >> "$ART_FILE"
-          # Add a timestamp and matrix variables so it's non-empty and unique
-          date --utc >> "$ART_FILE" || python - <<'PY'  # fallback for Windows runners
-import datetime, sys
-print(datetime.datetime.utcnow().isoformat())
+          # Add a timestamp (prefer date -u; fallback to python3 if not available)
+          if date -u >/dev/null 2>&1; then
+            date -u >> "$ART_FILE"
+          else
+            echo "date not available, using python3 fallback" >> "$ART_FILE"
+            python3 - <<'PY' >> "$ART_FILE"
+import datetime
+print(datetime.datetime.utcnow().isoformat() + "Z")
 PY
-          # Ensure file exists and is non-empty
+          fi
+          # Ensure file exists and non-empty
+          echo "Artifact file size:"
           wc -c "$ART_FILE" || true
+          echo "Artifact head:"
+          head -n 20 "$ART_FILE" || true
+
+      - name: Debug - verify artifact exists before upload
+        run: |
+          ART_FILE="build-0417411-node${{ matrix.node }}.txt"
+          echo "Checking for $ART_FILE..."
+          if [ -f "$ART_FILE" ]; then
+            echo "$ART_FILE found"
+            ls -la "$ART_FILE"
+          else
+            echo "ERROR: $ART_FILE not found!"
+            ls -la || true
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          # artifact name must start with prefix build-0417411-
           name: build-0417411-node${{ matrix.node }}
           path: build-0417411-node${{ matrix.node }}.txt
