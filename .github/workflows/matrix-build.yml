@@ -1,86 +1,69 @@
-name: Matrix Build with Artifacts - 0417411
+name: Matrix Build (0417411)
 
 on:
   push:
-    branches:
-      - '**'
-  workflow_dispatch: {}
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build (node ${{ matrix.node }})
+    name: Node ${{ matrix.node }} on ubuntu-latest
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: [14, 16, 18]
+        node: [18, 20, 22]  # 3 parallel variants
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node }}
+      # Required identifier (must include matrix-0417411)
+      - name: matrix-0417411
+        run: |
+          echo "matrix identifier step: matrix-0417411"
+          echo "Building for Node ${{ matrix.node }}"
+
+      - name: Setup Node ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
-      - name: matrix-0417411
-        id: matrix_step
-        run: |
-          echo "matrix identifier step: matrix-0417411"
-          echo "Running on runner: $RUNNER_OS"
-          echo "Node version: $(node -v || true)"
-
-      # Debug: show workspace and environment (helps diagnose missing files / env issues)
-      - name: Debug - show working dir and files
-        run: |
-          echo "PWD: $(pwd)"
-          echo "List all files:"
-          ls -la || true
-          echo "Show repository root contents:"
-          ls -la $GITHUB_WORKSPACE || true
-
-      - name: Generate build artifact file
-        id: gen_artifact
+      - name: Generate build artifact
+        shell: bash
         run: |
           set -euo pipefail
-          ART_FILE="build-0417411-node${{ matrix.node }}.txt"
-          echo "Creating artifact file: $ART_FILE"
-          echo "Build artifact for node ${{ matrix.node }}" > "$ART_FILE"
-          echo "Repository: $GITHUB_REPOSITORY" >> "$ART_FILE"
-          echo "Run id: $GITHUB_RUN_ID" >> "$ART_FILE"
-          echo "Job: $GITHUB_JOB" >> "$ART_FILE"
-          # Add a timestamp (prefer date -u; fallback to python3 if not available)
-          if date -u >/dev/null 2>&1; then
-            date -u >> "$ART_FILE"
-          else
-            echo "date not available, using python3 fallback" >> "$ART_FILE"
-            python3 - <<'PY' >> "$ART_FILE"
-import datetime
-print(datetime.datetime.utcnow().isoformat() + "Z")
-PY
-          fi
-          # Ensure file exists and non-empty
-          echo "Artifact file size:"
-          wc -c "$ART_FILE" || true
-          echo "Artifact head:"
-          head -n 20 "$ART_FILE" || true
+          mkdir -p dist
+          ART_FILE="dist/build-0417411-node${{ matrix.node }}.txt"
+          {
+            echo "Build output for version ${{ matrix.node }}"
+            echo "Repo: $GITHUB_REPOSITORY"
+            echo "Run ID: $GITHUB_RUN_ID"
+            echo "Commit: $GITHUB_SHA"
+            echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            # add a simple JSON line to ensure content variety (optional)
+            echo "{\"node\": \"${{ matrix.node }}\", \"artifact\":\"build-0417411-node${{ matrix.node }}\"}"
+          } > "$ART_FILE"
+          # prove it's non-empty
+          wc -c "$ART_FILE"
+          echo "Created artifact: $ART_FILE"
+          ls -la dist
 
-      - name: Debug - verify artifact exists before upload
+      - name: Verify artifact exists
         run: |
-          ART_FILE="build-0417411-node${{ matrix.node }}.txt"
-          echo "Checking for $ART_FILE..."
-          if [ -f "$ART_FILE" ]; then
-            echo "$ART_FILE found"
-            ls -la "$ART_FILE"
-          else
-            echo "ERROR: $ART_FILE not found!"
-            ls -la || true
+          ART_FILE="dist/build-0417411-node${{ matrix.node }}.txt"
+          if [ ! -s "$ART_FILE" ]; then
+            echo "ERROR: artifact missing or empty: $ART_FILE"
+            ls -la dist
             exit 1
           fi
+          echo "Artifact verified: $ART_FILE (non-empty)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          # artifact name must start with prefix build-0417411-
           name: build-0417411-node${{ matrix.node }}
-          path: build-0417411-node${{ matrix.node }}.txt
+          path: dist/build-0417411-node${{ matrix.node }}.txt
+          if-no-files-found: error
+          retention-days: 7
